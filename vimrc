@@ -122,7 +122,7 @@ Plug 'google/vim-codefmt'
 Plug 'google/vim-searchindex'
 Plug 'ybian/smartim' "vim insert 状态下按 Esc 键自己切回英文状态
 Plug 'dense-analysis/ale' "check syntax
-Plug 'ycm-core/YouCompleteMe'
+Plug 'ycm-core/YouCompleteMe', { 'frozen': 1, 'for': ['cpp', 'c', 'go', 'java', 'ocaml', 'python', 'sh'], 'on': ['YcmCompleter', 'YcmDiags', 'YcmForceCompileAndDiagnostics']}
 Plug 'RRethy/vim-illuminate' "vim-illuminate
 "Plug 'artur-shaik/vim-javacomplete2'
 Plug 'sbdchd/neoformat'
@@ -134,6 +134,7 @@ call plug#end()
 "autocmd FileType java setlocal omnifunc=javacomplete#Complete
 
 " YCM configuration
+autocmd! User YouCompleteMe if !has('vim_starting') | call youcompleteme#Enable() | endif
 let g:syntastic_java_checkers = []
 
 let g:smartim_default = 'com.apple.keylayout.ABC'
