@@ -104,8 +104,9 @@ call plug#begin('~/.vim/plugged')
 "Plug 'vim-airline/vim-airline'
 "Plug 'vim-airline/vim-airline-themes'
 Plug 'itchyny/lightline.vim'
+Plug 'mengelbrecht/lightline-bufferline'
 Plug 'tpope/vim-fugitive'
-Plug 'preservim/nerdtree', { 'on': ['NERDTreeToggle', 'NERDTreeFind']}
+Plug 'preservim/nerdtree', { 'on': ['NERDTree', 'NERDTreeVCS', 'NERDTreeFromBookmark', 'NERDTreeToggle', 'NERDTreeToggleVCS', 'NERDTreeFocus', 'NERDTreeMirror', 'NERDTreeClose', 'NERDTreeFind', 'NERDTreeCWD', 'NERDTreeRefreshRoot']}
 Plug 'Xuyuanp/nerdtree-git-plugin'
 "Plug 'jiangmiao/auto-pairs'
 Plug 'luochen1990/rainbow'
@@ -130,9 +131,6 @@ Plug 'dstein64/vim-startuptime'
 call plug#end()
 "--------------vim-plug configuration end--------------
 
-"vim-javacomplete2 configuration
-"autocmd FileType java setlocal omnifunc=javacomplete#Complete
-
 " YCM configuration
 autocmd! User YouCompleteMe if !has('vim_starting') | call youcompleteme#Enable() | endif
 let g:syntastic_java_checkers = []
@@ -140,7 +138,6 @@ let g:syntastic_java_checkers = []
 let g:smartim_default = 'com.apple.keylayout.ABC'
 
 "--------------vim-airline configuration--------------
-"let g:airline_theme="luna"
 let g:airline_theme="powerlineish"
 let g:airline_powerline_fonts = 1
 "打开tabline功能,方便查看Buffer和切换,省去了minibufexpl插件，在1个Tab下用多个buffer"
@@ -156,29 +153,12 @@ let g:airline#extensions#whitespace#enabled = 0
 let g:airline#extensions#whitespace#symbol = '!'
 
 " 设置字体
-"set guifont=Courier_New:h10:cANSI
-set guifont=Powerline\ Consolas:h14
-"set guifont=Source\ Code\ Pro\ for\ Powerline:h13
-"set guifont=Monaco\ for\ Powerline:h13
+"set guifont=Powerline\ Consolas:h14
+set guifont=Monaco\ for\ Powerline:h12
 
-"设置状态栏符号显示，下面编码用双引号""
-"let g:Powerline_symbols="fancy"
-"let g:airline_symbols = {}
-"let g:airline_left_sep = "▶"
-"let g:airline_left_alt_sep = "❯"
-"let g:airline_right_sep = "◀"
-"let g:airline_right_alt_sep = "❮"
-"let g:airline_symbols.branch = "⎇"
-"let g:airline_symbols.readonly = "\u2b64"
-"let g:airline_symbols.linenr = "¶"
-
-"设置顶部tabline栏符号显示"
-"let g:airline#extensions#tabline#left_sep = "▶"
-"let g:airline#extensions#tabline#left_alt_sep = "❯"
-
-"lightline git 配置
+"lightline 配置开始
 let g:lightline = {
-          \ 'colorscheme': 'wombat',
+      \ 'colorscheme': 'powerline',
       \ 'active': {
           \   'left': [ [ 'mode', 'paste' ],
       \             [ 'gitbranch', 'readonly', 'filename', 'modified' ] ]
@@ -187,6 +167,18 @@ let g:lightline = {
           \   'gitbranch': 'FugitiveHead'
       \ },
       \ }
+set showtabline=2
+let g:lightline.tabline = { 'left': [ [ 'buffers' ] ], 'right': [ [ 'bufnum' ] ] }
+let g:lightline.component_expand = { 'buffers': 'lightline#bufferline#buffers' }
+let g:lightline.component_type = { 'buffers': 'tabsel' }
+let g:lightline.separator = { 'left': '', 'right': '' }
+let g:lightline.subseparator = {'left': '', 'right': '' }
+let g:lightline#bufferline#show_number = 1
+let g:lightline#bufferline#unnamed = '[No Name]'
+if has("gui_running")
+    set guioptions-=e
+endif
+"lightline 配置结束
 
 "NERD Tree configuration
 map <C-n> :NERDTreeToggle<CR>
@@ -197,17 +189,18 @@ autocmd StdinReadPre * let s:std_in=1
 autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTree") && b:NERDTree.isTabTree()) | q | endif
 
 "nerdtree-git-plugin 配置
-let g:NERDTreeIndicatorMapCustom = {
-    \ "Modified" : "✹",
-    \ "Staged" : "✚",
-    \ "Untracked" : "✭",
-    \ "Renamed" : "➜",
-    \ "Unmerged" : "═",
-    \ "Deleted" : "✖",
-    \ "Dirty" : "✗",
-    \ "Clean" : "✔︎",
-    \ "Unknown" : "?"
-    \ }
+let g:NERDTreeGitStatusIndicatorMapCustom = {
+                \ 'Modified'  :'✹',
+                \ 'Staged'    :'✚',
+                \ 'Untracked' :'✭',
+                \ 'Renamed'   :'➜',
+                \ 'Unmerged'  :'═',
+                \ 'Deleted'   :'✖',
+                \ 'Dirty'     :'✗',
+                \ 'Ignored'   :'☒',
+                \ 'Clean'     :'✔︎',
+                \ 'Unknown'   :'?',
+                \ }
 
 " rainbow configuration
 let g:rainbow_active = 1 "0 if you want to enable it later via :RainbowToggle"
