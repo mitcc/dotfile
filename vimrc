@@ -96,8 +96,8 @@ command! TrimWhitespace call TrimWhitespace()
 
 "<leader>j to prettify the current line
 "<leader>j in visual mode to prettify highlighted
-nnoremap <leader>j !!python -mjson.tool<cr>
-vnoremap <leader>j :!python -mjson.tool<cr>
+"nnoremap <leader>j !!python -mjson.tool --no-ensure-ascii<cr>
+"vnoremap <leader>j :!python -mjson.tool --no-ensure-ascii<cr>
 
 "--------------vim-plug configuration start--------------
 call plug#begin('~/.vim/plugged')
@@ -110,7 +110,7 @@ Plug 'preservim/nerdtree', { 'on': ['NERDTree', 'NERDTreeVCS', 'NERDTreeFromBook
 Plug 'Xuyuanp/nerdtree-git-plugin'
 "Plug 'jiangmiao/auto-pairs'
 Plug 'luochen1990/rainbow'
-"Plug 'axiaoxin/vim-json-line-format', { 'on' : ['JsonLineFormatWrite'] }
+Plug 'mitcc/vim-json-line-format'
 Plug 'bronson/vim-trailing-whitespace'
 Plug 'airblade/vim-gitgutter'
 "Plug 'lfv89/vim-interestingwords'
