@@ -106,7 +106,7 @@ Plug 'vim-airline/vim-airline-themes'
 "Plug 'itchyny/lightline.vim'
 "Plug 'mengelbrecht/lightline-bufferline'
 Plug 'tpope/vim-fugitive'
-Plug 'preservim/nerdtree', { 'on': ['NERDTree', 'NERDTreeVCS', 'NERDTreeFromBookmark', 'NERDTreeToggle', 'NERDTreeToggleVCS', 'NERDTreeFocus', 'NERDTreeMirror', 'NERDTreeClose', 'NERDTreeFind', 'NERDTreeCWD', 'NERDTreeRefreshRoot']}
+Plug 'preservim/nerdtree'
 Plug 'Xuyuanp/nerdtree-git-plugin'
 "Plug 'jiangmiao/auto-pairs'
 Plug 'luochen1990/rainbow'
