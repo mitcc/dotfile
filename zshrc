@@ -122,6 +122,9 @@ alias calc='python3 -ic "from math import *; from random import *"'
 
 alias gicd='git icdiff'
 alias gdh='git diff HEAD'
+alias gdm='git diff $(git_main_branch)'
+alias gcof='git branch | fzf | cut -c 3- | xargs git checkout'
+alias gcop="git branch | fzf --preview 'git show --color=always {-1}'  --bind 'enter:become(git checkout {-1})'"
 
 alias find_large50="sudo du -a / | sort -n -r | head -n 50"
 
