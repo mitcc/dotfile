@@ -102,13 +102,21 @@
 
 (use-package git-gutter
   :ensure t
-  :hook (after-init . global-git-gutter-mode) ; 启动时全局启用
+  :hook (after-init . global-git-gutter-mode)
+  :custom
+  (git-gutter:diff-option "HEAD")
+  (git-gutter:modified-sign " ")
+  (git-gutter:update-interval 0)
   :config
-  (custom-set-variables '(git-gutter:diff-option "HEAD"))
-  (custom-set-variables '(git-gutter:modified-sign " "))
   (set-face-background 'git-gutter:modified "orange")
   (set-face-foreground 'git-gutter:added "green")
-  (set-face-foreground 'git-gutter:deleted "red"))
+  (set-face-foreground 'git-gutter:deleted "red")
+  (add-hook 'after-save-hook #'git-gutter)
+  (add-function :after after-focus-change-function
+                (lambda ()
+                  (when (frame-focus-state)
+                    (when (bound-and-true-p git-gutter-mode)
+                      (git-gutter:update-all-windows))))))
 
 ; super-x, super-c, super-v 使用系统粘贴板, 与 emacs/evil 互不影响
 (require 'simpleclip)

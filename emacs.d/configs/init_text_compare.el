@@ -32,10 +32,8 @@
             box-shadow: 0 -2px 4px rgba(0,0,0,0.3); font-family: monospace;
             min-height: 14px;
         }
-        #vim-left { left: 00px; }
+        #vim-left { left: 0px; }
         #vim-right { right: 44px; }
-        .monaco-diff-editor .char-delete { background-color: rgba(255, 0, 0, 0.45) !important; }
-        .monaco-diff-editor .char-insert { background-color: rgba(0, 255, 0, 0.35) !important; }
     </style>
 </head>
 <body>
@@ -73,7 +71,6 @@
                 const leftEd = window.diffEditor.getOriginalEditor();
                 const rightEd = window.diffEditor.getModifiedEditor();
 
-                // 初始化 Vim 模式
                 MonacoVim.initVimMode(leftEd, document.getElementById('vim-left'));
                 MonacoVim.initVimMode(rightEd, document.getElementById('vim-right'));
 
@@ -81,7 +78,41 @@
                     return (rightEd.hasTextFocus() || rightEd.hasWidgetFocus()) ? rightEd : leftEd;
                 }
 
-                // 强制焦点修复
+                function getFocusedSide() {
+                    return (rightEd.hasTextFocus() || rightEd.hasWidgetFocus()) ? 'right' : 'left';
+                }
+
+                // --- 核心修复逻辑：反向选择起始于行尾时的自动补偿 ---
+                let isCorrecting = false;
+                function autoCorrectSelection(ed, side) {
+                    if (isCorrecting) return;
+                    const sel = ed.getSelection();
+                    if (!sel || sel.isEmpty()) return;
+
+                    const model = ed.getModel();
+                    const statusEl = document.getElementById('vim-' + side);
+                    const modeText = statusEl ? statusEl.textContent : '';
+
+                    if (!modeText || modeText.includes('INSERT')) return;
+
+                    const isReversed = sel.selectionStartLineNumber > sel.positionLineNumber ||
+                                     (sel.selectionStartLineNumber === sel.positionLineNumber && sel.selectionStartColumn > sel.positionColumn);
+                    if (!isReversed) return;
+
+                    const lineMaxCol = model.getLineMaxColumn(sel.selectionStartLineNumber);
+                    if (sel.selectionStartColumn === lineMaxCol - 1) {
+                        isCorrecting = true;
+                        const newSelection = new monaco.Selection(
+                            sel.selectionStartLineNumber, lineMaxCol,
+                            sel.positionLineNumber, sel.positionColumn
+                        );
+                        ed.setSelection(newSelection);
+                        isCorrecting = false;
+                    }
+                }
+                leftEd.onDidChangeCursorSelection(() => autoCorrectSelection(leftEd, 'left'));
+                rightEd.onDidChangeCursorSelection(() => autoCorrectSelection(rightEd, 'right'));
+
                 setTimeout(() => { leftEd.focus(); }, 100);
 
                 document.addEventListener('keydown', function(e) {
@@ -90,13 +121,22 @@
                     const k = e.key.toLowerCase();
                     if (k === 'v') {
                         e.preventDefault();
-                        document.title = 'EMACS_PASTE_' + (getFocused() === rightEd ? 'RIGHT' : 'LEFT');
+                        // 哪一侧需要粘贴，由 Emacs 处理
+                        document.title = 'EMACS_PASTE_' + getFocusedSide().toUpperCase();
                     } else if (k === 'c' || k === 'x') {
                         const ed = getFocused();
                         const sel = ed.getSelection();
                         if (!sel.isEmpty()) {
                             const text = ed.getModel().getValueInRange(sel);
-                            navigator.clipboard.writeText(text);
+                            // 由于 navigator.clipboard 的不可靠性，此处仅作为标准触发，
+                            // 如果需要 Cmd+c 也强力支持，可以参考 Paste 逻辑增加 TITLE 信号
+                            if (text) {
+                                const ta = document.createElement('textarea');
+                                ta.value = text; ta.style.position = 'absolute'; ta.style.left = '-9999px';
+                                document.body.appendChild(ta); ta.select();
+                                try { document.execCommand('copy'); } catch(err) {}
+                                document.body.removeChild(ta);
+                            }
                             if (k === 'x') ed.executeEdits('cut', [{range: sel, text: ''}]);
                         }
                         e.preventDefault();
@@ -105,7 +145,9 @@
 
                 window.emacsForcePaste = function(side, text) {
                     const ed = (side === 'left') ? leftEd : rightEd;
-                    ed.setValue(text);
+                    const selection = ed.getSelection();
+                    const textEdit = { range: selection, text: text, forceMoveMarkers: true };
+                    ed.executeEdits(\"emacs-paste\", [textEdit]);
                     ed.focus();
                 };
             });
@@ -114,16 +156,41 @@
 </body>
 </html>"))
 
+(defun text-cmp-paste-with-simpleclip ()
+  "强力粘贴：调用系统剪贴板并强制注入到当前焦点侧编辑器。"
+  (interactive)
+  (let* ((xw (xwidget-webkit-current-session))
+         (text (cond ((fboundp 'simpleclip-get-contents) (simpleclip-get-contents))
+                     ((fboundp 'gui-get-selection) (gui-get-selection 'CLIPBOARD))
+                     (t (ignore-errors (current-kill 0 t))))))
+    (when (and xw text)
+      (xwidget-webkit-execute-script
+       xw
+       (format "if(window.diffEditor){
+                  const side = (window.diffEditor.getModifiedEditor().hasTextFocus() ||
+                               window.diffEditor.getModifiedEditor().hasWidgetFocus()) ? 'right' : 'left';
+                  window.emacsForcePaste(side, %s);
+                }" (json-encode-string text))))))
+
+(defvar text-cmp-minor-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "s-v") 'text-cmp-paste-with-simpleclip)
+    (define-key map (kbd "C-y") 'text-cmp-paste-with-simpleclip)
+    map))
+
+(define-minor-mode text-cmp-minor-mode
+  "Text-Cmp 内部专用的 Minor Mode。"
+  :lighter "" :keymap text-cmp-minor-mode-map)
+
 (defun text-cmp--poll-title-signal ()
   (when (buffer-live-p text-cmp--session-buffer)
     (let* ((xw (with-current-buffer text-cmp--session-buffer (xwidget-webkit-current-session)))
            (title (when xw (xwidget-webkit-title xw))))
       (when (and title (string-prefix-p "EMACS_PASTE_" title))
-        (let ((side (if (string-match "RIGHT" title) "right" "left"))
-              (text (or (gui-get-selection 'CLIPBOARD) (ignore-errors (current-kill 0 t)) "")))
+        (let ((side (if (string-match "RIGHT" title) "right" "left")))
           (with-current-buffer text-cmp--session-buffer
             (xwidget-webkit-execute-script xw "document.title = 'Text Compare';")
-            (xwidget-webkit-execute-script xw (format "if(window.emacsForcePaste) window.emacsForcePaste('%s', %s);" side (json-encode-string text)))))))))
+            (text-cmp-paste-with-simpleclip)))))))
 
 (defun text-cmp--cleanup ()
   (when text-cmp--signal-timer (cancel-timer text-cmp--signal-timer) (setq text-cmp--signal-timer nil)))
@@ -139,6 +206,7 @@
     (xwidget-webkit-browse-url (concat "file://" temp-file))
     (setq text-cmp--session-buffer (current-buffer))
     (rename-buffer "*Text-Cmp*" t)
+    (text-cmp-minor-mode 1)
     (add-hook 'kill-buffer-hook #'text-cmp--cleanup nil t)
     (text-cmp--cleanup)
     (setq text-cmp--signal-timer (run-with-timer 0.1 0.1 #'text-cmp--poll-title-signal))

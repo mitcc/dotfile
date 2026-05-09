@@ -79,215 +79,215 @@
         });
 
         require(['vs/editor/editor.main'], function() {
-            // 在 Monaco 加载完毕后，再加载 monaco-vim 插件
-            require(['monaco-vim'], function(MonacoVim) {
-                window.leftEditor = monaco.editor.create(document.getElementById('left-pane'), {
-                    theme: 'vs-dark', language: 'json', automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false
-                });
-                window.rightEditor = monaco.editor.create(document.getElementById('right-pane'), {
-                    theme: 'vs-dark', language: 'json', automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false
-                });
+            // 创建编辑器
+            window.leftEditor = monaco.editor.create(document.getElementById('left-pane'), {
+                theme: 'vs-dark', language: 'json', automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false
+            });
+            window.rightEditor = monaco.editor.create(document.getElementById('right-pane'), {
+                theme: 'vs-dark', language: 'json', automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false
+            });
+            document.getElementById('status-message').textContent = '就绪';
 
-                // 初始化 Vim 模式并绑定状态栏
+            // 初始化 Vim 模式并绑定状态栏
+            require(['monaco-vim'], function(MonacoVim) {
                 MonacoVim.initVimMode(window.leftEditor, document.getElementById('vim-left'));
                 MonacoVim.initVimMode(window.rightEditor, document.getElementById('vim-right'));
+                setTimeout(() => { window.leftEditor.focus(); }, 100);
+            }, function(err) { console.log('Vim failed to load'); });
 
-                let lDecs = [], rDecs = [];
+            // --- 反向选择起始于行尾时的自动补偿 ---
+            let isCorrecting = false;
+            function autoCorrectSelection(ed, side) {
+                if (isCorrecting) return;
+                const sel = ed.getSelection();
+                if (!sel || sel.isEmpty()) return;
+                const model = ed.getModel();
+                const statusEl = document.getElementById('vim-' + side);
+                const modeText = statusEl ? statusEl.textContent : '';
+                if (!modeText || modeText.includes('INSERT')) return;
 
-                let isSyncingLeft = false, isSyncingRight = false;
-                leftEditor.onDidScrollChange((e) => {
-                    if (isSyncingLeft) { isSyncingLeft = false; return; }
-                    isSyncingRight = true;
-                    rightEditor.setScrollTop(e.scrollTop);
-                    rightEditor.setScrollLeft(e.scrollLeft);
-                });
-                rightEditor.onDidScrollChange((e) => {
-                    if (isSyncingRight) { isSyncingRight = false; return; }
-                    isSyncingLeft = true;
-                    leftEditor.setScrollTop(e.scrollTop);
-                    leftEditor.setScrollLeft(e.scrollLeft);
-                });
+                const isReversed = sel.selectionStartLineNumber > sel.positionLineNumber ||
+                                 (sel.selectionStartLineNumber === sel.positionLineNumber && sel.selectionStartColumn > sel.positionColumn);
+                if (!isReversed) return;
 
-                function getFocused() {
-                    return rightEditor.hasTextFocus() || rightEditor.hasWidgetFocus() ? rightEditor : leftEditor;
+                const lineMaxCol = model.getLineMaxColumn(sel.selectionStartLineNumber);
+                if (sel.selectionStartColumn === lineMaxCol - 1) {
+                    isCorrecting = true;
+                    ed.setSelection(new monaco.Selection(sel.selectionStartLineNumber, lineMaxCol, sel.positionLineNumber, sel.positionColumn));
+                    isCorrecting = false;
                 }
-                function copyToClipboard(text) {
-                    var ta = document.createElement('textarea');
-                    ta.value = text; ta.style.position = 'absolute'; ta.style.left = '-9999px';
-                    document.body.appendChild(ta);
-                    ta.select();
-                    try { document.execCommand('copy'); } catch(e) {}
-                    document.body.removeChild(ta);
-                }
+            }
+            window.leftEditor.onDidChangeCursorSelection(() => autoCorrectSelection(window.leftEditor, 'left'));
+            window.rightEditor.onDidChangeCursorSelection(() => autoCorrectSelection(window.rightEditor, 'right'));
 
-                document.addEventListener('keydown', function(e) {
-                    if (!(e.metaKey || e.ctrlKey)) return;
-                    const k = e.key.toLowerCase();
-                    if (k === 'v') {
-                        e.preventDefault();
-                        document.title = 'EMACS_PASTE_' + (getFocused() === rightEditor ? 'RIGHT' : 'LEFT');
-                    } else if (k === 'c' || k === 'x') {
-                        let ed = getFocused(), sel = ed.getSelection();
-                        let text = sel.isEmpty() ? (ed.getModel().getLineContent(sel.startLineNumber) + '\\n') : ed.getModel().getValueInRange(sel);
-                        if (text) {
-                            e.preventDefault();
-                            copyToClipboard(text);
-                            if (k === 'x') {
-                                let range = sel.isEmpty() ? new monaco.Range(sel.startLineNumber, 1, sel.startLineNumber + 1, 1) : sel;
-                                ed.executeEdits('cut', [{range: range, text: ''}]);
-                            }
-                        }
-                    }
-                }, true);
+            let lDecs = [], rDecs = [];
 
-                window.emacsForcePaste = function(side, text) {
-                    let ed = (side === 'left') ? leftEditor : rightEditor;
+            // 活跃侧记忆
+            window.lastActiveSide = 'left';
+            window.leftEditor.onDidFocusEditorText(() => { window.lastActiveSide = 'left'; });
+            window.rightEditor.onDidFocusEditorText(() => { window.lastActiveSide = 'right'; });
+
+            function getFocusedSide() {
+                if (window.rightEditor.hasTextFocus() || window.rightEditor.hasWidgetFocus()) return 'right';
+                if (window.leftEditor.hasTextFocus() || window.leftEditor.hasWidgetFocus()) return 'left';
+                return window.lastActiveSide;
+            }
+
+            function copyToClipboard(text) {
+                var ta = document.createElement('textarea');
+                ta.value = text; ta.style.position = 'absolute'; ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); } catch(e) {}
+                document.body.removeChild(ta);
+            }
+
+            document.addEventListener('keydown', function(e) {
+                if (!(e.metaKey || e.ctrlKey)) return;
+                const k = e.key.toLowerCase();
+                if (k === 'v') {
+                    e.preventDefault();
+                    document.title = 'EMACS_PASTE_' + getFocusedSide().toUpperCase();
+                } else if (k === 'c' || k === 'x') {
+                    let ed = (getFocusedSide() === 'right') ? window.rightEditor : window.leftEditor;
                     let sel = ed.getSelection();
-                    ed.executeEdits('emacs-paste', [{
-                        range: (sel && !sel.isEmpty()) ? sel : ed.getModel().getFullModelRange(),
-                        text: text
-                    }]);
-                    ed.focus(); compare();
-                };
-
-                function findIntraDiff(s1, s2) {
-                    let i = 0, j = s1.length - 1, k = s2.length - 1;
-                    while (i <= j && i <= k && s1[i] === s2[i]) i++;
-                    while (j >= i && k >= i && s1[j] === s2[k]) { j--; k--; }
-                    return { start: i, end1: j + 1, end2: k + 1 };
-                }
-
-                function offsetToPos(startLine, startCol, text, offset) {
-                    let line = startLine, col = startCol;
-                    for (let i = 0; i < offset; i++) {
-                        if (text.charCodeAt(i) === 10) { line++; col = 1; }
-                        else { col++; }
-                    }
-                    return { line: line, column: col };
-                }
-
-                function compare() {
-                    const lt = leftEditor.getValue();
-                    const rt = rightEditor.getValue();
-                    const msg = document.getElementById('status-message');
-                    const cnt = document.getElementById('diff-count');
-                    if (!lt.trim() && !rt.trim()) { clearHighlights(); msg.textContent = '等待输入...'; msg.className = 'status-info'; cnt.style.display = 'none'; return; }
-                    if (!lt.trim() || !rt.trim()) { clearHighlights(); msg.textContent = (lt.trim() ? '右侧' : '左侧') + '为空，等待输入...'; msg.className = 'status-info'; cnt.style.display = 'none'; return; }
-                    try {
-                        const lm = window.jsonSourceMap.parse(lt), rm = window.jsonSourceMap.parse(rt);
-                        const diffs = window.jsonpatch.compare(lm.data, rm.data);
-                        if (diffs.length === 0) {
-                            clearHighlights();
-                            msg.textContent = 'JSON 语义一致'; msg.className = 'status-ok'; cnt.style.display = 'none';
-                        } else {
-                            let effectiveCount = applyHighlights(diffs, lm, rm, lt, rt);
-                            msg.textContent = '检测到语义差异'; msg.className = 'status-error';
-                            cnt.textContent = '(共 ' + effectiveCount + ' 处)'; cnt.style.display = 'inline';
+                    let text = sel.isEmpty() ? (ed.getModel().getLineContent(sel.startLineNumber) + '\\n') : ed.getModel().getValueInRange(sel);
+                    if (text) {
+                        e.preventDefault();
+                        copyToClipboard(text);
+                        if (k === 'x') {
+                            let range = sel.isEmpty() ? new monaco.Range(sel.startLineNumber, 1, sel.startLineNumber + 1, 1) : sel;
+                            ed.executeEdits('cut', [{range: range, text: ''}]);
                         }
-                    } catch(e) {
-                        msg.textContent = 'JSON 格式错误: ' + e.message; msg.className = 'status-error'; cnt.style.display = 'none';
                     }
                 }
+            }, true);
 
-                function applyHighlights(diffs, lm, rm, lt, rt) {
-                    let nl = [], nr = [];
-                    let adds = diffs.filter(d => d.op === 'add');
-                    let rems = diffs.filter(d => d.op === 'remove');
-                    let others = diffs.filter(d => d.op !== 'add' && d.op !== 'remove');
-                    let paired = [];
-                    let usedAdds = new Set(), usedRems = new Set();
+            window.emacsForcePaste = function(side, text) {
+                let ed = (side === 'left') ? window.leftEditor : window.rightEditor;
+                let sel = ed.getSelection();
+                ed.executeEdits('emacs-paste', [{ range: sel, text: text, forceMoveMarkers: true }]);
+                ed.focus(); compare();
+            };
 
-                    for (let i = 0; i < rems.length; i++) {
-                        let r = rems[i];
-                        for (let j = 0; j < adds.length; j++) {
-                            if (usedAdds.has(j)) continue;
-                            let a = adds[j];
-                            if (r.path.substring(0, r.path.lastIndexOf('/')) === a.path.substring(0, a.path.lastIndexOf('/'))) {
-                                let lp = lm.pointers[r.path], rp = rm.pointers[a.path];
-                                if (lp && rp && lp.key && rp.key) {
-                                    if (lt.substring(lp.value.pos, lp.valueEnd.pos) === rt.substring(rp.value.pos, rp.valueEnd.pos)) {
-                                        paired.push({ lp: lp, rp: rp });
-                                        usedRems.add(i); usedAdds.add(j);
-                                        break;
-                                    }
-                                }
+            function findIntraDiff(s1, s2) {
+                let i = 0, j = s1.length - 1, k = s2.length - 1;
+                while (i <= j && i <= k && s1[i] === s2[i]) i++;
+                while (j >= i && k >= i && s1[j] === s2[k]) { j--; k--; }
+                return { start: i, end1: j + 1, end2: k + 1 };
+            }
+
+            function offsetToPos(startLine, startCol, text, offset) {
+                let line = startLine, col = startCol;
+                for (let i = 0; i < offset; i++) {
+                    if (text.charCodeAt(i) === 10) { line++; col = 1; }
+                    else { col++; }
+                }
+                return { line: line, column: col };
+            }
+
+            function compare() {
+                const lt = leftEditor.getValue(), rt = rightEditor.getValue();
+                const msg = document.getElementById('status-message'), cnt = document.getElementById('diff-count');
+                if (!lt.trim() && !rt.trim()) { clearHighlights(); msg.textContent = '等待输入...'; msg.className = 'status-info'; cnt.style.display = 'none'; return; }
+                if (!lt.trim() || !rt.trim()) { clearHighlights(); msg.textContent = (lt.trim() ? '右侧' : '左侧') + '为空，等待输入...'; msg.className = 'status-info'; cnt.style.display = 'none'; return; }
+                let lm, rm;
+                try {
+                    lm = window.jsonSourceMap.parse(lt);
+                } catch(e) {
+                    clearHighlights(); msg.textContent = '左侧 JSON 格式错误: ' + e.message; msg.className = 'status-error'; cnt.style.display = 'none'; return;
+                }
+                try {
+                    rm = window.jsonSourceMap.parse(rt);
+                } catch(e) {
+                    clearHighlights(); msg.textContent = '右侧 JSON 格式错误: ' + e.message; msg.className = 'status-error'; cnt.style.display = 'none'; return;
+                }
+                try {
+                    const diffs = window.jsonpatch.compare(lm.data, rm.data);
+                    if (diffs.length === 0) {
+                        clearHighlights(); msg.textContent = 'JSON 语义一致'; msg.className = 'status-ok'; cnt.style.display = 'none';
+                    } else {
+                        let effectiveCount = applyHighlights(diffs, lm, rm, lt, rt);
+                        msg.textContent = '检测到语义差异'; msg.className = 'status-error';
+                        cnt.textContent = '(共 ' + effectiveCount + ' 处)'; cnt.style.display = 'inline';
+                    }
+                } catch(e) { msg.textContent = '对比逻辑错误: ' + e.message; msg.className = 'status-error'; }
+            }
+
+            function applyHighlights(diffs, lm, rm, lt, rt) {
+                let nl = [], nr = [];
+                let adds = diffs.filter(d => d.op === 'add'), rems = diffs.filter(d => d.op === 'remove'), others = diffs.filter(d => d.op !== 'add' && d.op !== 'remove');
+                let paired = [], usedAdds = new Set(), usedRems = new Set();
+
+                for (let i = 0; i < rems.length; i++) {
+                    let r = rems[i];
+                    for (let j = 0; j < adds.length; j++) {
+                        if (usedAdds.has(j)) continue;
+                        let a = adds[j];
+                        if (r.path.substring(0, r.path.lastIndexOf('/')) === a.path.substring(0, a.path.lastIndexOf('/'))) {
+                            let lp = lm.pointers[r.path], rp = rm.pointers[a.path];
+                            if (lp && rp && lp.key && rp.key && lt.substring(lp.value.pos, lp.valueEnd.pos) === rt.substring(rp.value.pos, rp.valueEnd.pos)) {
+                                paired.push({ lp: lp, rp: rp }); usedRems.add(i); usedAdds.add(j); break;
                             }
                         }
                     }
+                }
+                for (let i = 0; i < rems.length; i++) { if (!usedRems.has(i)) others.push(rems[i]); }
+                for (let j = 0; j < adds.length; j++) { if (!usedAdds.has(j)) others.push(adds[j]); }
 
-                    for (let i = 0; i < rems.length; i++) { if (!usedRems.has(i)) others.push(rems[i]); }
-                    for (let j = 0; j < adds.length; j++) { if (!usedAdds.has(j)) others.push(adds[j]); }
+                function addRowBg(p, arr, cls) {
+                    let start = p.key || p.value;
+                    arr.push({ range: new monaco.Range(start.line+1, 1, p.valueEnd.line+1, 1), options: { className: cls, isWholeLine: true }});
+                }
 
-                    function addRowBg(p, arr, cls) {
-                        let start = p.key || p.value;
-                        arr.push({ range: new monaco.Range(start.line+1, 1, p.valueEnd.line+1, 1), options: { className: cls, isWholeLine: true }});
+                paired.forEach(pair => {
+                    let lp = pair.lp, rp = pair.rp; addRowBg(lp, nl, 'diff-row-left'); addRowBg(rp, nr, 'diff-row-right');
+                    let k1 = lt.substring(lp.key.pos, lp.keyEnd.pos), k2 = rt.substring(rp.key.pos, rp.keyEnd.pos), id = findIntraDiff(k1, k2);
+                    if (id.start < id.end1) {
+                        let p1 = offsetToPos(lp.key.line+1, lp.key.column+1, k1, id.start), p2 = offsetToPos(lp.key.line+1, lp.key.column+1, k1, id.end1);
+                        nl.push({ range: new monaco.Range(p1.line, p1.column, p2.line, p2.column), options: { className: 'diff-char-left' }});
                     }
+                    if (id.start < id.end2) {
+                        let p1 = offsetToPos(rp.key.line+1, rp.key.column+1, k2, id.start), p2 = offsetToPos(rp.key.line+1, rp.key.column+1, k2, id.end2);
+                        nr.push({ range: new monaco.Range(p1.line, p1.column, p2.line, p2.column), options: { className: 'diff-char-right' }});
+                    }
+                });
 
-                    paired.forEach(pair => {
-                        let lp = pair.lp, rp = pair.rp;
-                        addRowBg(lp, nl, 'diff-row-left'); addRowBg(rp, nr, 'diff-row-right');
-                        let k1 = lt.substring(lp.key.pos, lp.keyEnd.pos);
-                        let k2 = rt.substring(rp.key.pos, rp.keyEnd.pos);
-                        let id = findIntraDiff(k1, k2);
-
+                others.forEach(d => {
+                    const lp = lm.pointers[d.path], rp = rm.pointers[d.path];
+                    if (lp) addRowBg(lp, nl, 'diff-row-left');
+                    if (rp) addRowBg(rp, nr, 'diff-row-right');
+                    if (lp && rp && d.op === 'replace') {
+                        const v1 = lt.substring(lp.value.pos, lp.valueEnd.pos), v2 = rt.substring(rp.value.pos, rp.valueEnd.pos), id = findIntraDiff(v1, v2);
                         if (id.start < id.end1) {
-                            let p1 = offsetToPos(lp.key.line+1, lp.key.column+1, k1, id.start);
-                            let p2 = offsetToPos(lp.key.line+1, lp.key.column+1, k1, id.end1);
+                            let p1 = offsetToPos(lp.value.line+1, lp.value.column+1, v1, id.start), p2 = offsetToPos(lp.value.line+1, lp.value.column+1, v1, id.end1);
                             nl.push({ range: new monaco.Range(p1.line, p1.column, p2.line, p2.column), options: { className: 'diff-char-left' }});
                         }
                         if (id.start < id.end2) {
-                            let p1 = offsetToPos(rp.key.line+1, rp.key.column+1, k2, id.start);
-                            let p2 = offsetToPos(rp.key.line+1, rp.key.column+1, k2, id.end2);
+                            let p1 = offsetToPos(rp.value.line+1, rp.value.column+1, v2, id.start), p2 = offsetToPos(rp.value.line+1, rp.value.column+1, v2, id.end2);
                             nr.push({ range: new monaco.Range(p1.line, p1.column, p2.line, p2.column), options: { className: 'diff-char-right' }});
                         }
-                    });
+                    } else {
+                        if (lp) { let start = lp.key || lp.value; nl.push({ range: new monaco.Range(start.line+1, start.column+1, lp.valueEnd.line+1, lp.valueEnd.column+1), options: { className: 'diff-char-left' }}); }
+                        if (rp) { let start = rp.key || rp.value; nr.push({ range: new monaco.Range(start.line+1, start.column+1, rp.valueEnd.line+1, rp.valueEnd.column+1), options: { className: 'diff-char-right' }}); }
+                    }
+                });
+                lDecs = leftEditor.deltaDecorations(lDecs, nl); rDecs = rightEditor.deltaDecorations(rDecs, nr);
+                return diffs.length - paired.length;
+            }
 
-                    others.forEach(d => {
-                        const lp = lm.pointers[d.path], rp = rm.pointers[d.path];
-                        if (lp) addRowBg(lp, nl, 'diff-row-left');
-                        if (rp) addRowBg(rp, nr, 'diff-row-right');
+            function clearHighlights() {
+                lDecs = leftEditor.deltaDecorations(lDecs, []);
+                rDecs = rightEditor.deltaDecorations(rDecs, []);
+            }
 
-                        if (lp && rp && d.op === 'replace') {
-                            const v1 = lt.substring(lp.value.pos, lp.valueEnd.pos);
-                            const v2 = rt.substring(rp.value.pos, rp.valueEnd.pos);
-                            const id = findIntraDiff(v1, v2);
+            let syncL = false, syncR = false;
+            leftEditor.onDidScrollChange((e) => { if (syncL) { syncL = false; return; } syncR = true; rightEditor.setScrollTop(e.scrollTop); rightEditor.setScrollLeft(e.scrollLeft); });
+            rightEditor.onDidScrollChange((e) => { if (syncR) { syncR = false; return; } syncL = true; leftEditor.setScrollTop(e.scrollTop); leftEditor.setScrollLeft(e.scrollLeft); });
 
-                            if (id.start < id.end1) {
-                                let p1 = offsetToPos(lp.value.line+1, lp.value.column+1, v1, id.start);
-                                let p2 = offsetToPos(lp.value.line+1, lp.value.column+1, v1, id.end1);
-                                nl.push({ range: new monaco.Range(p1.line, p1.column, p2.line, p2.column), options: { className: 'diff-char-left' }});
-                            }
-                            if (id.start < id.end2) {
-                                let p1 = offsetToPos(rp.value.line+1, rp.value.column+1, v2, id.start);
-                                let p2 = offsetToPos(rp.value.line+1, rp.value.column+1, v2, id.end2);
-                                nr.push({ range: new monaco.Range(p1.line, p1.column, p2.line, p2.column), options: { className: 'diff-char-right' }});
-                            }
-                        } else {
-                            if (lp) {
-                                let start = lp.key || lp.value;
-                                nl.push({ range: new monaco.Range(start.line+1, start.column+1, lp.valueEnd.line+1, lp.valueEnd.column+1), options: { className: 'diff-char-left' }});
-                            }
-                            if (rp) {
-                                let start = rp.key || rp.value;
-                                nr.push({ range: new monaco.Range(start.line+1, start.column+1, rp.valueEnd.line+1, rp.valueEnd.column+1), options: { className: 'diff-char-right' }});
-                            }
-                        }
-                    });
-                    lDecs = leftEditor.deltaDecorations(lDecs, nl);
-                    rDecs = rightEditor.deltaDecorations(rDecs, nr);
-                    return diffs.length - paired.length;
-                }
-
-                function clearHighlights() {
-                    lDecs = leftEditor.deltaDecorations(lDecs, []);
-                    rDecs = rightEditor.deltaDecorations(rDecs, []);
-                }
-
-                let t;
-                leftEditor.onDidChangeModelContent(() => { clearTimeout(t); t = setTimeout(compare, 300); });
-                rightEditor.onDidChangeModelContent(() => { clearTimeout(t); t = setTimeout(compare, 300); });
-                document.getElementById('status-message').textContent = '就绪';
-            });
+            let t;
+            leftEditor.onDidChangeModelContent(() => { clearTimeout(t); t = setTimeout(compare, 300); });
+            rightEditor.onDidChangeModelContent(() => { clearTimeout(t); t = setTimeout(compare, 300); });
         });
     </script>
 </body>
@@ -295,16 +295,41 @@
 
 ;; -------------------- 3. Emacs 接口 --------------------
 
+(defun json-cmp-paste ()
+  "强力粘贴：直接调用 simpleclip 内容并注入。"
+  (interactive)
+  (let* ((xw (xwidget-webkit-current-session))
+         (text (cond ((fboundp 'simpleclip-get-contents) (simpleclip-get-contents))
+                     ((fboundp 'gui-get-selection) (gui-get-selection 'CLIPBOARD))
+                     (t (ignore-errors (current-kill 0 t))))))
+    (when (and xw text)
+      (xwidget-webkit-execute-script
+       xw
+       (format "if(window.leftEditor && window.rightEditor){
+                  const side = (window.rightEditor.hasTextFocus() || window.rightEditor.hasWidgetFocus()) ? 'right' :
+                               ((window.leftEditor.hasTextFocus() || window.leftEditor.hasWidgetFocus()) ? 'left' : window.lastActiveSide);
+                  window.emacsForcePaste(side, %s);
+                }" (json-encode-string text))))))
+
+(defvar json-cmp-minor-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "s-v") 'json-cmp-paste)
+    (define-key map (kbd "C-y") 'json-cmp-paste)
+    map))
+
+(define-minor-mode json-cmp-minor-mode
+  "JSON-Compare 内部专用的 Minor Mode。"
+  :lighter "" :keymap json-cmp-minor-mode-map)
+
 (defun json-cmp--poll-title-signal ()
   (when (buffer-live-p json-cmp--session-buffer)
     (let* ((xw (with-current-buffer json-cmp--session-buffer (xwidget-webkit-current-session)))
            (title (when xw (xwidget-webkit-title xw))))
       (when (and title (string-prefix-p "EMACS_PASTE_" title))
-        (let ((side (if (string-match "RIGHT" title) "right" "left"))
-              (text (or (gui-get-selection 'CLIPBOARD) (ignore-errors (current-kill 0 t)) "")))
+        (let ((side (if (string-match "RIGHT" title) "right" "left")))
           (with-current-buffer json-cmp--session-buffer
             (xwidget-webkit-execute-script xw "document.title = 'JSON Compare';")
-            (xwidget-webkit-execute-script xw (format "if(window.emacsForcePaste) window.emacsForcePaste('%s', %s);" side (json-encode-string text)))))))))
+            (json-cmp-paste)))))))
 
 (defun json-cmp--cleanup ()
   (when json-cmp--signal-timer (cancel-timer json-cmp--signal-timer) (setq json-cmp--signal-timer nil)))
@@ -319,9 +344,10 @@
     (xwidget-webkit-browse-url (concat "file://" temp-file))
     (setq json-cmp--session-buffer (current-buffer))
     (rename-buffer "*JSON-Compare*" t)
+
+    (json-cmp-minor-mode 1)
     (with-current-buffer json-cmp--session-buffer
-      (setq header-line-format nil)
-      (setq mode-line-format nil))
+      (setq header-line-format nil mode-line-format nil))
     (add-hook 'kill-buffer-hook #'json-cmp--cleanup nil t)
     (json-cmp--cleanup)
     (setq json-cmp--signal-timer (run-with-timer 0.1 0.1 #'json-cmp--poll-title-signal))))
