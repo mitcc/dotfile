@@ -20,9 +20,9 @@
 	(beginning-of-line)))))
 
 ;; 添加多个 hook 确保覆盖各种情况
-(dolist (hook '(lisp-interaction-mode-hook
-		window-configuration-change-hook
-		buffer-list-update-hook
-		after-change-major-mode-hook))
-  (add-hook hook 'my-smart-scratch-position))
-
+(add-hook 'lisp-interaction-mode-hook #'my-smart-scratch-position)
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (when-let ((buf (get-buffer "*scratch*")))
+              (with-current-buffer buf
+                (my-smart-scratch-position)))))

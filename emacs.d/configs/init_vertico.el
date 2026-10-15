@@ -1,20 +1,23 @@
 ;; -*- lexical-binding: t; -*-
 (use-package vertico
+  :hook ((after-init . vertico-mode)
+         (vertico-mode . vertico-multiform-mode))
   :custom
   (vertico-scroll-margin 0) ;; Different scroll margin
   (vertico-count 20) ;; Show more candidates
   (vertico-resize t) ;; Grow and shrink the Vertico minibuffer
-  (vertico-cycle t) ;; Enable cycling for `vertico-next/previous'
-  :init
-  (vertico-mode))
+  (vertico-cycle t))
 
 ;; Persist history over Emacs restarts. Vertico sorts by history position.
 (use-package savehist
+  :defer 1
   :init
-  (savehist-mode))
+  (run-with-idle-timer 1 nil #'savehist-mode))
 
 ;; Optionally use the `orderless' completion style.
 (use-package orderless
+  :ensure t
+  :defer t
   :custom
   ;; Configure a custom style dispatcher (see the Consult wiki)
   ;; (orderless-style-dispatchers '(+orderless-consult-dispatch orderless-affix-dispatch))
@@ -24,9 +27,6 @@
   (completion-category-overrides '((file (styles partial-completion)))))
 
 (setq completion-in-region-function #'consult-completion-in-region)
-
-;; Enable vertico-multiform
-(vertico-multiform-mode)
 
 ;; Configure the display per command.
 ;; Use a buffer with indices for imenu

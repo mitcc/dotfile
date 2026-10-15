@@ -14,15 +14,23 @@
 
 (add-to-list 'load-path my-config-dir)
 
+;; JSON 格式化命令: 如果有选中区域，则格式化选中区域，否则格式化当前行
+(defun my-json-format ()
+  "格式化选中区域或当前行中的 JSON 内容。"
+  (interactive)
+  (require 'json)
+  (if (region-active-p)
+      (json-pretty-print (region-beginning) (region-end))
+    (let ((start (line-beginning-position))
+          (end (line-end-position)))
+      (json-pretty-print start end))))
+
 (dolist (file '("init_evil"
                 "init_neotree"
                 "init_corfu"
                 "init_vertico"
-                "init_illuminate"
-                "init_json_format"
                 "init_smarttab"
-                "init_scratch"
-                "init_smart_click"))
+                "init_scratch"))
   (load (expand-file-name file my-config-dir)
         nil 'nomessage))
 
@@ -48,22 +56,17 @@
 (setq-default show-trailing-whitespace t) ;; 尾部空格设置
 (setq delete-trailing-lines nil) ;; 禁止 delete-trailing-whitespace 删除文件末尾的空行
 (add-hook 'before-save-hook 'delete-trailing-whitespace) ; 保存前删掉行末空格
+(set-scroll-bar-mode 'right) ; 在右侧启用垂直滚动条
+;显示行号
+(add-hook 'prog-mode-hook #'display-line-numbers-mode)
+(add-hook 'text-mode-hook #'display-line-numbers-mode)
 (fset 'yes-or-no-p 'y-or-n-p)
-(global-display-line-numbers-mode t) ;显示行号
 (column-number-mode 1) ;显示光标所在列号
-(tool-bar-mode -1) ;关闭工具栏
-(scroll-bar-mode -1) ;关闭文件滑动控件
 (xterm-mouse-mode t) ;启用终端鼠标支持
 (setq initial-scratch-message nil) ;设置 *scratch* 缓冲区的初始信息为空
-(add-hook 'prog-mode-hook (lambda () (modify-syntax-entry ?_ "w"))) ;将下划线 _ 加入单词字符
-(add-hook 'text-mode-hook (lambda () (modify-syntax-entry ?_ "w")))
-
-(load-theme 'material t)
-;; 更改显示字体大小 16pt
-;; http://stackoverflow.com/questions/294664/how-to-set-the-font-size-in-emacs
-(set-face-attribute 'default nil :height 130 :family "Monaco for Powerline")
+(add-hook 'after-change-major-mode-hook (lambda () (modify-syntax-entry ?_ "w"))) ;将下划线 _ 加入单词字符
+(add-hook 'emacs-startup-hook (lambda () (load-theme 'material t)))
 (set-face-attribute 'region nil :background "#777777" :foreground "#CDCDCD")
-(setq initial-frame-alist '((width . 100) (height . 40))) ;; 设置初始窗口大小（字符宽度x高度）
 
 ;; 设置标题显示格式
 (setq frame-title-format
@@ -76,10 +79,14 @@
 
 (use-package exec-path-from-shell
   :ensure t
-  :defer t)
+  :defer t
+  :init
+  ;; 只启动登录 Shell，不启动交互式 Shell
+  ;; 避免加载 Oh My Zsh、补全插件等耗时配置
+  (setq exec-path-from-shell-arguments '("-l")
+        exec-path-from-shell-variables '("PATH")))
 
 (defun my-delayed-exec-path-from-shell ()
-  "在启动完成后，从 shell 同步 PATH 等环境变量。"
   (when (display-graphic-p)
     (require 'exec-path-from-shell)
     (exec-path-from-shell-initialize)))
@@ -92,6 +99,9 @@
 (run-with-idle-timer
   1 nil
   (lambda ()
+    (load (expand-file-name "init_illuminate" my-config-dir) nil 'nomessage)
+    (load (expand-file-name "init_smart_click" my-config-dir) nil 'nomessage)
+    (cursor-highlight-word-mode 1)
     (my-delayed-exec-path-from-shell) ; 从 shell 同步 PATH 等环境变量
     (recentf-mode 1)                  ; 启用最近打开文件
     (save-place-mode 1)               ; 全局启用保存位置功能
@@ -133,7 +143,7 @@
 
 (use-package git-gutter
   :ensure t
-  :defer 2
+  :defer 1
   :custom
   (git-gutter:diff-option "HEAD")
   (git-gutter:modified-sign " ")
@@ -151,8 +161,11 @@
                       (git-gutter:update-all-windows))))))
 
 ; super-x, super-c, super-v 使用系统粘贴板, 与 emacs/evil 互不影响
-(require 'simpleclip)
-(simpleclip-mode 1)
+(use-package simpleclip
+  :ensure t
+  :defer 1
+  :config
+  (simpleclip-mode 1))
 
 (electric-pair-mode 1)
 (setq electric-pair-pairs '((?\" . ?\") (?\' . ?\') (?\{ . ?\})))
@@ -239,12 +252,37 @@
 
 (use-package dashboard
   :ensure t
+  :defer t
   :custom
   (dashboard-items '((recents . 10)))
   (dashboard-startup-banner 'logo)
   (dashboard-center-content t)
   (dashboard-vertically-center-content t)
   (dashboard-show-shortcuts nil)
-  :config
-  (dashboard-setup-startup-hook))
+  (dashboard-startupify-list
+   '(dashboard-insert-banner
+     dashboard-insert-newline
+     dashboard-insert-banner-title
+     dashboard-insert-newline
+     dashboard-insert-init-info
+     dashboard-insert-items
+     dashboard-insert-newline)))
 
+(defun my-started-with-file-p ()
+  "判断 Emacs 启动后是否已经打开文件。"
+  (catch 'opened
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (when (buffer-file-name)
+          (throw 'opened t))))
+    nil))
+
+(defun my-open-dashboard-if-no-file ()
+  "没有打开文件时加载并打开 Dashboard。"
+  (unless (my-started-with-file-p)
+    (require 'dashboard)
+    (dashboard-open)))
+
+(run-with-idle-timer
+  0.3 nil
+  #'my-open-dashboard-if-no-file)
