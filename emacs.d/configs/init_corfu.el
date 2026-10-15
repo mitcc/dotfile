@@ -1,19 +1,27 @@
 ;; -*- lexical-binding: t; -*-
 (use-package corfu
+  :ensure t
+  :defer 1
   :init
-  (progn
-	(setq corfu-auto t)
-	(setq corfu-cycle t)
-	(setq corfu-quit-at-boundary t)
-	(setq corfu-quit-no-match t)
-	(setq corfu-preview-current nil)
-	(setq corfu-min-width 80)
-	(setq corfu-max-width 100)
-	(setq corfu-auto-delay 0.2)
-	(setq corfu-auto-prefix 1)
-	(setq corfu-on-exact-match nil)
-	(global-corfu-mode))
+  (setq corfu-auto t
+        corfu-cycle t
+        corfu-quit-at-boundary t
+        corfu-quit-no-match t
+        corfu-preview-current nil
+        corfu-min-width 80
+        corfu-max-width 100
+        corfu-auto-delay 0.2
+        corfu-auto-prefix 1
+        corfu-on-exact-match nil)
   :config
+  (global-corfu-mode 1)
+
+  (unless (display-graphic-p)
+    (corfu-terminal-mode 1))
+
+  (corfu-history-mode 1)
+  (add-to-list 'savehist-additional-variables 'corfu-history)
+
   (defun my-corfu-escape ()
 	(interactive)
 	(if (ignore-errors (when (corfu--visible-p) (corfu-quit) t))
@@ -23,7 +31,7 @@
 	(and (symbol-value 'corfu--frame)
 		 (frame-visible-p (symbol-value 'corfu--frame))))
   (with-eval-after-load 'evil (define-key evil-insert-state-map (kbd "<escape>") #'my-corfu-escape))
-  (defun my/corfu-smart-tab ()
+  (defun my-corfu-smart-tab ()
     "如果只有一个候选项，则直接插入；否则切换到下一个候选项。"
     (interactive)
     (if (= 1 corfu--total)
@@ -31,19 +39,12 @@
       (corfu-next)))
   :bind
   (:map corfu-map
-        ("TAB" . my/corfu-smart-tab)
-        ([tab] . my/corfu-smart-tab)
+        ("TAB" . my-corfu-smart-tab)
+        ([tab] . my-corfu-smart-tab)
 		("RET" . corfu-insert)
 		([return] . corfu-insert)
         ("S-TAB" . corfu-previous)
         ([backtab] . corfu-previous)))
-
-(unless (display-graphic-p)
-  (corfu-terminal-mode +1))
-
-(corfu-history-mode 1)
-(savehist-mode 1)
-(add-to-list 'savehist-additional-variables 'corfu-history)
 
 (defun my-ignore-elisp-keywords (cand)
   (or (not (keywordp cand))
@@ -69,8 +70,17 @@
                   :exclusive 'no
                   :company-kind (lambda (_) 'text))))))))
 
+(defun my-ensure-cape-and-dabbrev ()
+  "第一次使用补全后端时加载 Cape 和 Dabbrev。"
+  (require 'cape)
+  (require 'dabbrev)
 
-(defun my/setup-general-capf ()
+  ;; 确保 dabbrev 加载后再设置这些变量
+  (setq dabbrev-abbrev-char-regexp "[[:alnum:]_]"
+        dabbrev-case-replace nil))
+
+(defun my-setup-general-capf ()
+  (my-ensure-cape-and-dabbrev)
   (setq-local completion-at-point-functions
               `(,(cape-capf-super
                   #'my-current-input-capf
@@ -79,7 +89,8 @@
                   #'cape-emoji
                   #'cape-keyword))))
 
-(defun my/setup-emacs-lisp-capf ()
+(defun my-setup-emacs-lisp-capf ()
+  (my-ensure-cape-and-dabbrev)
   (setq-local completion-at-point-functions
               `(,(cape-capf-super
                   #'my-current-input-capf
@@ -106,16 +117,12 @@
 
 (setq corfu-sort-override-function #'my-corfu-combined-sort)
 
-(require 'dabbrev)
-(require 'cape)
 (use-package cape
   :bind (("C-n" . cape-dabbrev)
 		 ("C-c p h" . cape-history)
 		 ("C-c p e" . cape-emoji)
 		 ("C-c p f" . cape-file))
   :init
-  (setq dabbrev-abbrev-char-regexp "[[:alnum:]_]")
-  (setq dabbrev-case-replace nil)
-  (add-hook 'prog-mode-hook #'my/setup-general-capf)
-  (add-hook 'text-mode-hook #'my/setup-general-capf)
-  (add-hook 'emacs-lisp-mode-hook #'my/setup-emacs-lisp-capf))
+  (add-hook 'prog-mode-hook #'my-setup-general-capf)
+  (add-hook 'text-mode-hook #'my-setup-general-capf)
+  (add-hook 'emacs-lisp-mode-hook #'my-setup-emacs-lisp-capf))

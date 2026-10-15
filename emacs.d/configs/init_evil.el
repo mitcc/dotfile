@@ -64,6 +64,7 @@
 
 (use-package evil
   :ensure t
+  :defer 1
   :init
   (setq evil-want-keybinding nil)
   (setq evil-want-C-u-scroll t)
@@ -109,22 +110,13 @@
 
 (use-package undo-tree
   :ensure t
+  :after evil
   :diminish
-  :defer 1
   :custom
   (undo-tree-auto-save-history nil)
   :config
   (global-undo-tree-mode 1)
   (evil-set-undo-system 'undo-tree))
-
-(evil-define-key 'normal dired-mode-map
-  (kbd "<RET>") 'dired-find-alternate-file
-  (kbd "C-k") 'dired-up-directory
-  "`" 'dired-open-term
-  "o" 'dired-find-file-other-window
-  "s" 'hydra-dired-quick-sort/body
-  "z" 'dired-get-size
-  ")" 'dired-omit-mode)
 
 (use-package evil-collection
   :ensure t
@@ -135,32 +127,50 @@
   :config
   (evil-collection-init))
 
-(require 'evil-leader)
-(global-evil-leader-mode)
-
-(evil-leader/set-key "f" 'find-file)
-(evil-leader/set-key "r" 'consult-recent-file)
-(evil-leader/set-key "b" 'switch-to-buffer)
-(evil-leader/set-key "kb" 'kill-buffer)
-(evil-leader/set-key-for-mode 'emacs-lisp-mode "cb" 'byte-compile-file)
-
-
 (defun color-minibuffer (color)
   `(lambda ()
 	 (when (minibufferp)
 	   (face-remap-add-relative 'minibuffer-prompt :foreground, color))))
 
-(add-hook 'evil-normal-state-entry-hook   (color-minibuffer "#FF0000"))
-(add-hook 'evil-operator-state-entry-hook (color-minibuffer "#FF8000"))
-(add-hook 'evil-insert-state-entry-hook   (color-minibuffer "#00FF00"))
-(add-hook 'evil-replace-state-entry-hook  (color-minibuffer "#FFFF00"))
-(add-hook 'evil-visual-state-entry-hook   (color-minibuffer "#8080FF"))
-(add-hook 'evil-motion-state-entry-hook   (color-minibuffer "#A0E0FF"))
-(add-hook 'evil-emacs-state-entry-hook    (color-minibuffer "#8000FF"))
-
-
 (with-eval-after-load 'evil
-  (evil-ex-define-cmd "sp"  #'evil-window-split)
+  ;; Dired 中的 Evil 按键
+  (evil-define-key 'normal dired-mode-map
+    (kbd "<RET>") #'dired-find-alternate-file
+    (kbd "C-k") #'dired-up-directory
+    "`" 'dired-open-term
+    "o" 'dired-find-file-other-window
+    "s" 'hydra-dired-quick-sort/body
+    "z" 'dired-get-size
+    ")" 'dired-omit-mode)
+
+  ;; Evil Leader
+  (use-package evil-leader
+    :ensure t
+    :config
+    (global-evil-leader-mode 1)
+
+    (evil-leader/set-key "f" 'find-file)
+    (evil-leader/set-key "r" 'consult-recent-file)
+    (evil-leader/set-key "b" 'switch-to-buffer)
+    (evil-leader/set-key "kb" 'kill-buffer)
+    (evil-leader/set-key "j" #'my-json-format)
+    (evil-leader/set-key-for-mode 'emacs-lisp-mode "cb" 'byte-compile-file)
+
+    ;; 为 Evil 已经存在的 buffer 补启用 evil-leader
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (when (bound-and-true-p evil-local-mode)
+          (evil-leader-mode 1)))))
+
+  (add-hook 'evil-normal-state-entry-hook (color-minibuffer "#FF0000"))
+  (add-hook 'evil-operator-state-entry-hook (color-minibuffer "#FF8000"))
+  (add-hook 'evil-insert-state-entry-hook (color-minibuffer "#00FF00"))
+  (add-hook 'evil-replace-state-entry-hook (color-minibuffer "#FFFF00"))
+  (add-hook 'evil-visual-state-entry-hook (color-minibuffer "#8080FF"))
+  (add-hook 'evil-motion-state-entry-hook (color-minibuffer "#A0E0FF"))
+  (add-hook 'evil-emacs-state-entry-hook (color-minibuffer "#8000FF"))
+
+  (evil-ex-define-cmd "sp" #'evil-window-split)
   (evil-ex-define-cmd "vsp" #'evil-window-vsplit))
 
 (use-package evil-traces
