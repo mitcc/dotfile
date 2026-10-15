@@ -103,4 +103,3 @@
 
 (provide 'cursor-highlight-word)
 
-(cursor-highlight-word-mode 1) ; 全局启用

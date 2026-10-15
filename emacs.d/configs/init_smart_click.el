@@ -64,3 +64,40 @@
 (global-set-key (kbd "<double-mouse-1>") #'my-select-word-on-double-click)
 (global-set-key [double-down-mouse-1] (lambda (event) (interactive "e") nil)) ;; 双击:传递事件给操作系统
 (global-set-key (kbd "<triple-mouse-1>") #'my-select-trimmed-line-on-tripple-click)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 链接鼠标操作：悬停显示下划线，Ctrl+点击打开
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defconst my-smart-click--url-regexp
+  "https?://[^ \t\n\r\"'<>]+")
+
+(defun my-smart-click--url-at-event (event)
+  (let* ((start (event-start event))
+         (window (posn-window start))
+         (position (posn-point start)))
+    (when (and (windowp window) (integer-or-marker-p position))
+      (with-current-buffer (window-buffer window)
+        (save-excursion
+          (goto-char position)
+          (let ((line-end (line-end-position)) found)
+            (beginning-of-line)
+            (while (and (not found)
+                        (re-search-forward my-smart-click--url-regexp line-end t))
+              (when (<= (match-beginning 0) position (match-end 0))
+                (setq found (match-string-no-properties 0))))
+            found))))))
+
+(defun my-smart-click--open-url (event)
+  (interactive "e")
+  (when (memq 'control (event-modifiers event))
+    (when-let ((url (my-smart-click--url-at-event event)))
+      (browse-url url))))
+
+(defun my-smart-click--enable-url-mouse-face ()
+  (font-lock-add-keywords
+   nil `((,my-smart-click--url-regexp
+          (0 (put-text-property (match-beginning 0) (match-end 0)
+                                'mouse-face '(:underline t)) nil)))))
+
+(add-hook 'font-lock-mode-hook #'my-smart-click--enable-url-mouse-face)
+(global-set-key (kbd "C-<down-mouse-1>") #'my-smart-click--open-url)
