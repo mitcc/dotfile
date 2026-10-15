@@ -10,6 +10,6 @@
   (add-hook 'tuareg-mode-hook 'merlin-mode t)
   (add-hook 'caml-mode-hook 'merlin-mode t)))
 
-
-(add-hook 'tuareg-mode-hook (lambda() (setq tuareg-mode-name "🐫")))
+(setq tuareg-mode-name "🐫")
+(force-mode-line-update t)
 
